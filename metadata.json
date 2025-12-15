@@ -1,0 +1,5 @@
+{
+  "name": "设计参考无限生成器 v3",
+  "description": "一个利用 AI 分析室内设计风格并生成衍生设计的智能工具。具备视觉分析、提示词工程及自动切图功能。",
+  "requestFramePermissions": []
+}

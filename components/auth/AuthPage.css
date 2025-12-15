@@ -1,0 +1,379 @@
+:root {
+    --auth-bg: #050505;
+    --auth-text: #e5e5e5;
+    --cyan: #00ffff;
+    /* 系统字体栈 */
+    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-serif: Georgia, "Times New Roman", "Songti SC", "SimSun", serif;
+}
+
+.auth-container {
+    min-height: 100vh;
+    display: flex;
+    background-color: var(--auth-bg);
+    color: var(--auth-text);
+    font-family: var(--font-serif);
+    position: relative;
+    overflow: hidden;
+
+    /* Matte Texture from Landing */
+    background-image:
+        repeating-linear-gradient(45deg,
+            rgba(255, 255, 255, 0.03) 0px,
+            rgba(255, 255, 255, 0.03) 1px,
+            transparent 1px,
+            transparent 4px),
+        radial-gradient(circle at 50% 30%, #1a1a1a 0%, #050505 70%);
+    background-size: 100% 100%;
+    box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.8);
+}
+
+/* Background Giant Text - Watermark style */
+.auth-bg-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 30vw;
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.02);
+    line-height: 1;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1;
+    font-family: 'Noto Serif SC', serif;
+}
+
+/* Auth Brand / Title Section */
+.auth-brand {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    /* Centered instead of split */
+    padding: 4rem;
+    z-index: 10;
+    border-right: 1px dashed #333;
+    /* Distinct separation */
+}
+
+.brand-title {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(3rem, 6vw, 5rem);
+    font-weight: 400;
+    color: #fff;
+    margin-bottom: 1rem;
+    transition: all 0.5s ease;
+}
+
+.brand-title:hover {
+    color: var(--cyan);
+    text-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+}
+
+.brand-subtitle {
+    font-family: 'Noto Serif SC', serif;
+    color: #666;
+    letter-spacing: 0.5em;
+    font-size: 1rem;
+}
+
+/* Auth Form Section */
+.auth-form-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    backdrop-filter: blur(5px);
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 450px;
+    padding: 3rem;
+    /* Minimalist card, no border or bg, just floating fields */
+}
+
+.auth-header {
+    margin-bottom: 3rem;
+    border-left: 2px solid #fff;
+    padding-left: 2rem;
+}
+
+.auth-title {
+    font-size: 2rem;
+    font-weight: 400;
+    color: #fff;
+    margin-bottom: 0.5rem;
+}
+
+.auth-subtitle {
+    color: #666;
+    font-family: 'Noto Serif SC', serif;
+    font-size: 0.9rem;
+}
+
+/* Form Inputs - Yohji Tailor Sheet */
+.form-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid #333;
+    padding: 1.5rem 0;
+    margin-bottom: 0;
+    transition: border-color 0.3s ease;
+}
+
+.form-group:focus-within {
+    border-bottom-color: var(--cyan);
+}
+
+.form-label {
+    display: block;
+    font-size: 0.7rem;
+    color: #666;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    min-width: 100px;
+    /* Fixed width for alignment */
+    margin-bottom: 0;
+}
+
+.form-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-size: 1rem;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+    font-weight: 400;
+    text-align: right;
+    /* Right aligned like a data sheet */
+    transition: all 0.3s ease;
+}
+
+.form-input:focus {
+    outline: none;
+    color: var(--cyan);
+}
+
+.form-row {
+    display: flex;
+    gap: 1rem;
+    flex: 1;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+/* Adjustments for inputs inside rows (like verify code) */
+.form-row .form-input {
+    text-align: right;
+}
+
+/* Buttons */
+.btn {
+    width: 100%;
+    padding: 1.2rem;
+    font-family: 'Cinzel', serif;
+    font-size: 1rem;
+    letter-spacing: 0.2em;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+}
+
+.btn-primary {
+    background: transparent;
+    border: 1px solid #fff;
+    color: #fff;
+    margin-top: 2rem;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: #fff;
+    color: #000;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+}
+
+.btn-secondary {
+    /* Send Code btn - More prominent style */
+    background: transparent;
+    border: 1px solid #444;
+    color: #999;
+    font-size: 0.75rem;
+    padding: 0.6rem 1rem;
+    width: auto;
+    letter-spacing: 0.1em;
+    min-width: 100px;
+    text-align: center;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.3s ease;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    color: var(--cyan);
+    border-color: var(--cyan);
+    text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+}
+
+.alert {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid;
+    font-size: 0.9rem;
+    font-family: 'Noto Serif SC', serif;
+}
+
+.alert-error {
+    border-color: #900;
+    color: #f55;
+    background: rgba(150, 0, 0, 0.1);
+}
+
+.alert-success {
+    border-color: var(--cyan);
+    color: var(--cyan);
+    background: rgba(0, 255, 255, 0.05);
+}
+
+/* Footer Links */
+.auth-footer {
+    margin-top: 3rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.link-btn {
+    background: none;
+    border: none;
+    color: #666;
+    font-family: 'Noto Serif SC', serif;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: color 0.3s ease;
+    text-decoration: none;
+}
+
+.link-btn:hover {
+    color: var(--cyan);
+}
+
+.auth-loading {
+    background: var(--auth-bg);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    .auth-container {
+        flex-direction: column;
+    }
+
+    .auth-brand {
+        border-right: none;
+        border-bottom: 1px dashed #333;
+        padding: 2rem;
+    }
+
+    .brand-title {
+        font-size: 3rem;
+    }
+}
+
+/* Mobile: Verification code section - stack vertically */
+@media (max-width: 600px) {
+    .form-group {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+
+    .form-label {
+        margin-bottom: 0.25rem;
+    }
+
+    .form-input {
+        text-align: left;
+    }
+
+    .form-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+
+    .form-row .form-input {
+        text-align: left;
+    }
+
+    .btn-secondary {
+        width: 100%;
+        padding: 1rem;
+        font-size: 0.85rem;
+        border-color: #555;
+    }
+
+    .auth-card {
+        padding: 1.5rem;
+    }
+
+    .auth-header {
+        margin-bottom: 2rem;
+        padding-left: 1rem;
+    }
+
+    .auth-title {
+        font-size: 1.5rem;
+    }
+}
+
+.flex-1 {
+    flex: 1;
+}
+
+/* Invite Hint - 分享链接来源提示 */
+.invite-hint {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+    background: linear-gradient(135deg, rgba(0, 255, 255, 0.1) 0%, rgba(0, 255, 255, 0.05) 100%);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    border-radius: 4px;
+    font-family: 'Noto Serif SC', serif;
+    font-size: 0.85rem;
+    color: var(--cyan);
+    animation: inviteHintPulse 2s ease-in-out infinite;
+}
+
+.invite-hint .invite-icon {
+    font-size: 1.2rem;
+}
+
+.invite-hint strong {
+    color: #fff;
+}
+
+@keyframes inviteHintPulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 5px rgba(0, 255, 255, 0.2);
+    }
+
+    50% {
+        box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+    }
+}

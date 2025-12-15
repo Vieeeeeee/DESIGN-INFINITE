@@ -1,0 +1,455 @@
+/* ============================================
+   Landing Page - Yohji Yamamoto Aesthetic II
+   ============================================ */
+
+/* Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg: #050505;
+    --text: #e5e5e5;
+    --grey-text: #999999;
+    --dark-grey: #666666;
+    --accent-cyan: #00ffff;
+    /* 系统字体栈 */
+    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-serif: Georgia, "Times New Roman", "Songti SC", "SimSun", serif;
+}
+
+body {
+    background-color: var(--bg);
+}
+
+.landing {
+    width: 100%;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-serif);
+    overflow-x: hidden;
+    cursor: none;
+    /* Scoped custom cursor */
+}
+
+
+
+/* ============================================
+   Header
+   ============================================ */
+.landing-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 2rem 3rem;
+    z-index: 100;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.brand-logo {
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    font-size: 1rem;
+    /* Unified Size */
+    color: #fff;
+    letter-spacing: 0.2em;
+}
+
+.nav-pill {
+    color: #fff;
+    text-decoration: none;
+    font-size: 1rem;
+    /* Unified Size */
+    letter-spacing: 0.1em;
+    font-family: 'Cinzel', serif;
+    /* Match Font */
+    font-weight: 700;
+    /* Match Weight */
+}
+
+/* ============================================
+   Hero Section - Top Infinite
+   ============================================ */
+.hero-avant-garde {
+    height: 100vh;
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    background-color: #000000;
+    /* Pure Black Matte */
+    background-image:
+        repeating-linear-gradient(45deg,
+            rgba(255, 255, 255, 0.03) 0px,
+            rgba(255, 255, 255, 0.03) 1px,
+            transparent 1px,
+            transparent 4px);
+    background-size: 100% 100%;
+    /* Subtle noise/matte feel */
+    box-shadow: inset 0 0 100px rgba(0, 0, 0, 1.0);
+}
+
+/* 1. TOP CENTER - INFINITE */
+.position-top-center {
+    position: absolute;
+    top: 12vh;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    text-align: center;
+}
+
+.infinite-monolith {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.monolith-cn {
+    font-family: 'Noto Serif SC', serif;
+    font-size: clamp(4rem, 15vw, 12rem);
+    font-weight: 900;
+    color: #ffffff;
+    line-height: 1.1;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+    letter-spacing: 0.1em;
+}
+
+.monolith-en {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(1rem, 2vw, 2rem);
+    letter-spacing: 1.5em;
+    color: #fff;
+    margin-top: 1rem;
+    font-weight: 700;
+    opacity: 0.9;
+}
+
+/* 2. MID LEFT/RIGHT - DESIGN/GENERATOR */
+.text-scatter {
+    position: absolute;
+    z-index: 10;
+    top: 55%;
+    /* Push down */
+}
+
+.position-mid-left {
+    left: 10vw;
+    text-align: left;
+}
+
+.position-mid-right {
+    right: 10vw;
+    text-align: right;
+}
+
+/* Breathing Animation Keyframes */
+@keyframes breathing-glow {
+
+    0%,
+    100% {
+        color: var(--grey-text);
+        text-shadow: 0 0 5px rgba(255, 255, 255, 0.1);
+        filter: brightness(1);
+    }
+
+    50% {
+        color: var(--accent-cyan);
+        text-shadow: 0 0 20px rgba(0, 255, 255, 0.4), 0 0 40px rgba(0, 255, 255, 0.2);
+        filter: brightness(1.2);
+    }
+}
+
+@keyframes breathing-glow-cn {
+
+    0%,
+    100% {
+        color: var(--dark-grey);
+        text-shadow: none;
+    }
+
+    50% {
+        color: var(--accent-cyan);
+        text-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+    }
+}
+
+.title-serif {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(2rem, 4vw, 5rem);
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: 0.05em;
+    transition: all 0.5s ease;
+    /* Smooth transition for scale/color */
+}
+
+/* Apply breathing animation - staggered for left/right */
+.position-mid-left .title-serif {
+    animation: breathing-glow 6s ease-in-out infinite;
+    animation-delay: 0s;
+}
+
+.position-mid-right .title-serif {
+    animation: breathing-glow 6s ease-in-out infinite;
+    animation-delay: 3s;
+    /* Offset by half cycle for alternating effect */
+}
+
+.position-mid-left .cn-serif {
+    animation: breathing-glow-cn 6s ease-in-out infinite;
+    animation-delay: 0s;
+}
+
+.position-mid-right .cn-serif {
+    animation: breathing-glow-cn 6s ease-in-out infinite;
+    animation-delay: 3s;
+}
+
+/* Hover Effect for Design/Generator - pause animation and go full bright */
+.text-scatter:hover .title-serif {
+    animation-play-state: paused;
+    color: var(--accent-cyan);
+    transform: scale(1.05);
+    /* Slight magnification */
+    text-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+    /* Cyan Glow */
+}
+
+.text-scatter:hover .cn-serif {
+    animation-play-state: paused;
+    color: var(--accent-cyan);
+    text-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+}
+
+.text-grey {
+    color: var(--grey-text);
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.1);
+}
+
+.text-dark-grey {
+    color: var(--dark-grey);
+}
+
+.cn-serif {
+    display: block;
+    font-family: 'Noto Serif SC', serif;
+    font-size: clamp(1rem, 1.5vw, 2rem);
+    margin-top: 0.5rem;
+}
+
+.align-right {
+    text-align: right;
+}
+
+/* Signature Thread (SVG) */
+.signature-thread-container {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 45vh;
+    z-index: 15;
+    pointer-events: none;
+}
+
+/* Flowing water animation for thread */
+@keyframes thread-flow {
+    0% {
+        stroke-dashoffset: 0;
+    }
+
+    100% {
+        stroke-dashoffset: -26;
+        /* Move by one full dash+gap cycle (4+8+2+12=26) */
+    }
+}
+
+.signature-thread-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.2));
+}
+
+.signature-thread-svg path {
+    animation: thread-flow 4s linear infinite;
+}
+
+.thread-knot {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #fff;
+}
+
+/* ============================================
+   Rest of Sections (Manifesto, CTA, Footer)
+   ============================================ */
+.manifesto-section {
+    padding: 10vh 15vw;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4rem;
+    border-top: 1px solid #111;
+}
+
+.manifesto-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.step-mark {
+    font-family: 'Cinzel', serif;
+    font-size: 1.2rem;
+    color: #444;
+}
+
+.manifesto-text {
+    font-family: 'Cinzel', serif;
+    font-size: 1.1rem;
+    color: #666;
+    letter-spacing: 0.1em;
+}
+
+/* Collection CTA - The Tag */
+/* Collection CTA - The Signature */
+.collection-cta {
+    min-height: 40vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    padding-bottom: 5rem;
+}
+
+.signature-cta {
+    font-family: 'Cinzel', serif;
+    font-size: 1.5rem;
+    /* Reduced from 3rem */
+    font-weight: 400;
+    color: #fff;
+    text-decoration: none;
+    position: relative;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: color 0.3s ease;
+}
+
+.sig-text {
+    position: relative;
+    z-index: 2;
+}
+
+.hover-scratch {
+    position: absolute;
+    top: 100%;
+    /* Under the text */
+    left: -10%;
+    width: 120%;
+    height: 10px;
+    z-index: 1;
+    transform: none;
+    /* Removed rotation */
+    opacity: 0;
+    transition: opacity 0.1s ease;
+    mix-blend-mode: normal;
+    pointer-events: none;
+}
+
+/* Hover Interaction */
+.signature-cta:hover {
+    color: var(--accent-cyan);
+    /* Cyan Text */
+    text-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+    transform: scale(1.1);
+    /* Scaling Effect */
+}
+
+.signature-cta:hover .hover-scratch {
+    opacity: 1;
+    stroke: var(--accent-cyan);
+    animation: scratchDraw 0.2s cubic-bezier(0.1, 0.7, 1.0, 0.1) forwards;
+}
+
+@keyframes scratchDraw {
+    from {
+        stroke-dasharray: 0 400;
+    }
+
+    to {
+        stroke-dasharray: 400 0;
+    }
+}
+
+/* Interactive Hovers (Cyan) */
+.nav-pill:hover {
+    color: var(--accent-cyan);
+    border-bottom-color: var(--accent-cyan);
+    text-shadow: 0 0 8px rgba(0, 255, 255, 0.4);
+}
+
+/* End of Hover Interactions */
+
+.yohji-footer {
+    padding: 3rem;
+    display: flex;
+    justify-content: space-between;
+    border-top: 1px dashed #333;
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    color: #444;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .hero-avant-garde {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .position-top-center {
+        position: relative;
+        top: auto;
+        left: auto;
+        transform: none;
+        margin-bottom: 4rem;
+    }
+
+    .position-mid-left,
+    .position-mid-right {
+        position: relative;
+        top: auto;
+        left: auto;
+        right: auto;
+        width: 100%;
+        padding: 0 10%;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .align-right {
+        text-align: center;
+    }
+
+    .manifesto-section {
+        grid-template-columns: 1fr;
+    }
+
+    .cursor-chalk {
+        display: none;
+    }
+}
