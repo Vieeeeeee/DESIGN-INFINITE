@@ -28,7 +28,7 @@
 - **备份**：无需备份，可从源码重新构建
 
 ```bash
-rsync -avz --delete dist/ root@43.132.214.236:/www/generator/dist/
+rsync -avz --delete dist/ <SERVER>:/www/generator/dist/
 ```
 
 ### 2. `runtime/` —— 禁止覆盖
@@ -55,7 +55,7 @@ rsync -avz \
   --exclude 'node_modules' \
   --exclude 'data.db' \
   --exclude '.env' \
-  server/ root@43.132.214.236:/www/generator/server/
+  server/ <SERVER>:/www/generator/server/
 ```
 
 ## Nginx 配置要点
@@ -95,8 +95,6 @@ server {
 ```bash
 # 查看定时任务
 crontab -l | grep backup
-
-# 输出：0 * * * * /usr/local/bin/backup_generator_db.sh >> /var/log/backup_generator.log 2>&1
 ```
 
 **备份位置**: `/www/generator/runtime/backups/db/`
@@ -164,4 +162,3 @@ chmod -R 775 /www/generator/runtime/generated
 ---
 
 > ⚠️ **违反上述原则可能导致用户数据丢失！**
-
