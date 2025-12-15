@@ -6,7 +6,7 @@ import { twMerge } from "tailwind-merge";
 import { cn } from './utils/cn';
 import { GenerationState } from './types';
 import { mockGenerateImageApi, smartCropFromClick, fileToBase64, getDominantColor } from './services/imageProcessor';
-import { generateImageVariation, upscaleImage } from './services/geminiService';
+import { generateImageVariation, upscaleImage, downloadImage } from './services/geminiService';
 import { buildGenerationPrompt, getGenerationConfig } from './config/prompts';
 import { userApi, inviteApi } from './services/api';
 import { generateInviteShareText } from './utils/inviteTemplate';
@@ -350,13 +350,30 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   // State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [selectedRoomTypes, setSelectedRoomTypes] = useState<string[]>([]);
-  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
-  const [fidelityLevel, setFidelityLevel] = useState<number>(3);
-  const [markers, setMarkers] = useState<Marker[]>([]);
-  const [collection, setCollection] = useState<CollectionItem[]>([]);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(() => localStorage.getItem('cache_previewUrl') || null);
+  const [selectedRoomTypes, setSelectedRoomTypes] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('cache_roomTypes') || '[]'); } catch { return []; }
+  });
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(() => localStorage.getItem('cache_generatedUrl') || null);
+  const [fidelityLevel, setFidelityLevel] = useState<number>(() => {
+    try { return JSON.parse(localStorage.getItem('cache_fidelity') || '3'); } catch { return 3; }
+  });
+  const [markers, setMarkers] = useState<Marker[]>(() => {
+    try { return JSON.parse(localStorage.getItem('cache_markers') || '[]'); } catch { return []; }
+  });
+  const [collection, setCollection] = useState<CollectionItem[]>(() => {
+    try { return JSON.parse(localStorage.getItem('cache_collection') || '[]'); } catch { return []; }
+  });
+  const [history, setHistory] = useState<HistoryItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('cache_history');
+      if (!saved) return [];
+      return JSON.parse(saved).map((item: any) => ({
+        ...item,
+        timestamp: new Date(item.timestamp) // Re-hydrate Date object
+      }));
+    } catch { return []; }
+  });
   const [genState, setGenState] = useState<GenerationState>({ status: 'idle' });
   const [isProcessingCollection, setIsProcessingCollection] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
@@ -368,9 +385,35 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
   const [showInviteCopied, setShowInviteCopied] = useState(false);
   const [flyingItems, setFlyingItems] = useState<FlyingItem[]>([]);
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
-  const [customResTag, setCustomResTag] = useState("自定义+");
-  const [customComTag, setCustomComTag] = useState("自定义+");
+  const [customResTag, setCustomResTag] = useState(() => localStorage.getItem('cache_customResTag') || "自定义+");
+  const [customComTag, setCustomComTag] = useState(() => localStorage.getItem('cache_customComTag') || "自定义+");
   const [editingCustom, setEditingCustom] = useState<'res' | 'com' | null>(null);
+
+  // Persistence Effects
+  useEffect(() => {
+    try {
+      if (previewUrl) localStorage.setItem('cache_previewUrl', previewUrl);
+      else localStorage.removeItem('cache_previewUrl');
+    } catch (e) {
+      console.warn('Cache quota exceeded');
+    }
+  }, [previewUrl]);
+
+  useEffect(() => { localStorage.setItem('cache_roomTypes', JSON.stringify(selectedRoomTypes)); }, [selectedRoomTypes]);
+
+  useEffect(() => {
+    try {
+      if (generatedImageUrl) localStorage.setItem('cache_generatedUrl', generatedImageUrl);
+      else localStorage.removeItem('cache_generatedUrl');
+    } catch (e) { console.warn('Storage quota exceeded for generated image'); }
+  }, [generatedImageUrl]);
+
+  useEffect(() => { try { localStorage.setItem('cache_fidelity', JSON.stringify(fidelityLevel)); } catch { } }, [fidelityLevel]);
+  useEffect(() => { try { localStorage.setItem('cache_markers', JSON.stringify(markers)); } catch { } }, [markers]);
+  useEffect(() => { try { localStorage.setItem('cache_collection', JSON.stringify(collection)); } catch { } }, [collection]);
+  useEffect(() => { try { localStorage.setItem('cache_history', JSON.stringify(history)); } catch { } }, [history]);
+  useEffect(() => { try { localStorage.setItem('cache_customResTag', customResTag); } catch { } }, [customResTag]);
+  useEffect(() => { try { localStorage.setItem('cache_customComTag', customComTag); } catch { } }, [customComTag]);
   const customInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingOverSource, setIsDraggingOverSource] = useState(false);
   const dragCounter = useRef(0);
@@ -399,12 +442,24 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
     return savedTheme ? savedTheme === 'light' : true; // Default to light mode if no preference saved
   });
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [isPreviewZoomed, setIsPreviewZoomed] = useState(false);
+  const previewModalRef = useRef<HTMLDivElement>(null);
+
+  // Reset zoom when opening new image
+  useEffect(() => {
+    if (previewImage) setIsPreviewZoomed(false);
+  }, [previewImage]);
+
   const [showCollectTooltip, setShowCollectTooltip] = useState(false);
   const [showGenerateTooltip, setShowGenerateTooltip] = useState(false);
 
   // Button glow effect - mouse position tracking
   const [generateBtnGlow, setGenerateBtnGlow] = useState<{ x: number, y: number, active: boolean }>({ x: 0, y: 0, active: false });
   const [collectBtnGlow, setCollectBtnGlow] = useState<{ x: number, y: number, active: boolean }>({ x: 0, y: 0, active: false });
+
+  // UX State Guidance - Non-intrusive visual hints
+  const [showClickHint, setShowClickHint] = useState(false);
+  const [hasCollectedAfterMark, setHasCollectedAfterMark] = useState(false);
 
 
   // Feature: Collapsible Left Sidebar
@@ -437,6 +492,20 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
     }
     return () => clearInterval(interval);
   }, [genState.status]);
+
+  // UX Guidance: Reset collection breathing state when new markers are added
+  useEffect(() => {
+    if (markers.length > 0) {
+      setHasCollectedAfterMark(false);
+    }
+  }, [markers.length]);
+
+  // UX Guidance: Dismiss click hint when user clicks to add marker
+  useEffect(() => {
+    if (markers.length > 0 && showClickHint) {
+      setShowClickHint(false);
+    }
+  }, [markers.length, showClickHint]);
 
   // Initialize mobile guide: show config tab first for new users
   useEffect(() => {
@@ -911,6 +980,10 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
       if (!hasSeenGuide) {
         setTimeout(() => setShowFirstTimeGuide(true), 2500);
       }
+
+      // UX Guidance: Show subtle click hint on nine-grid
+      setTimeout(() => setShowClickHint(true), 1200);
+      setTimeout(() => setShowClickHint(false), 5500); // Auto-dismiss after ~2 cycles
     } catch (err) {
       console.error(err);
       // 生成失败不扣分，显示VPN提示弹窗
@@ -947,6 +1020,7 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
     // Safety check: ensure click is within image bounds (0-1)
     if (x < 0 || x > 1 || y < 0 || y > 1) return;
 
+    // Check if clicking near an existing marker to remove it
     const existingIndex = markers.findIndex(m => Math.abs(m.x - x) < 0.05 && Math.abs(m.y - y) < 0.05);
     if (existingIndex >= 0) {
       // Mark for removal animation first
@@ -964,6 +1038,14 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
         rotation: Math.random() * 16 - 8 // Slightly more rotation for sticker feel
       }]);
     }
+  };
+
+  const handleMarkerRemove = (markerId: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering image click
+    setMarkers(prev => prev.map(m => m.id === markerId ? { ...m, isRemoving: true } : m));
+    setTimeout(() => {
+      setMarkers(prev => prev.filter(m => m.id !== markerId));
+    }, 300);
   };
 
   const handleCollect = async () => {
@@ -999,6 +1081,7 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
       );
       setFlyingItems(itemsToFly);
       setMarkers([]); // Clear markers immediately
+      setHasCollectedAfterMark(true); // UX Guidance: Stop breathing animation
 
       // Sync with animation duration (0.8s)
       setTimeout(() => {
@@ -1083,12 +1166,8 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
             console.warn("Points consumption failed:", consumeErr);
           }
 
-          const link = document.createElement('a');
-          link.href = upscaledBase64;
-          link.download = `upscaled_${item.id}.png`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+          // Use authenticated fetch-based download to trigger browser download
+          await downloadImage(upscaledBase64, `upscaled_${item.id}.png`);
 
           setUpscaleStatus(prev => ({ ...prev, completedCount: prev.completedCount + 1 }));
         } catch (e) {
@@ -1464,9 +1543,14 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
             </div>
           } className="flex-1 relative !p-0 min-h-0" isLight={isLightMode}
             action={
-              <span className={`text-[10px] tracking-wide hidden lg:inline-block ${isLightMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                ctrl/cmd 开启放大镜 · 点击标记 · 一键收藏
-              </span>
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-sm border text-[11px] font-medium tracking-wide hidden lg:flex cursor-default select-none font-['Noto_Serif_SC_Variable']
+                ${isLightMode
+                  ? 'bg-zinc-100/50 border-zinc-200/50 text-zinc-500'
+                  : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-500'
+                }`}>
+                <span className="opacity-70">⌨️</span>
+                <span>ctrl/cmd 开启放大镜 · 点击图片标记 · 一键灵感收藏</span>
+              </div>
             }>
 
             {/* Canvas Area with Scroll if needed */}
@@ -1490,7 +1574,7 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
 
                   {/* Main title */}
                   <p className={`text-lg tracking-[0.5em] font-light mb-10 ${isLightMode ? 'text-zinc-700' : 'text-zinc-300'}`} style={{ fontFamily: "'Noto Serif SC Variable', serif" }}>
-                    等待信号
+                    准备生成
                   </p>
 
                   {/* Network tips - cleaner typography */}
@@ -1600,7 +1684,7 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
                       ref={imageRef}
                       crossOrigin="anonymous"
                       src={generatedImageUrl}
-                      className={`max-w-full max-h-full shadow-2xl border-4 object-contain cursor-crosshair ${isLightMode ? 'border-zinc-800' : 'border-white'}`}
+                      className={`max-w-full max-h-full shadow-2xl border-4 border-white object-contain cursor-crosshair`}
                       onClick={handleImageClick}
                     />
                   </div>
@@ -1619,9 +1703,11 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
                         shadow-[0_2px_4px_rgba(0,0,0,0.3),0_4px_8px_rgba(0,0,0,0.2)]`}></div>
 
                       {/* Floating Sticker Label - Real sticker feel with shadow and rotation */}
-                      <div className={`absolute left-1/2 bottom-full mb-2 flex flex-col items-center pointer-events-none
+                      <div className={`absolute left-1/2 bottom-full mb-2 flex flex-col items-center pointer-events-auto cursor-pointer
                         ${marker.isRemoving ? 'sticker-label-remove' : 'sticker-label-appear'}`}
-                        style={{ transform: `translateX(-50%) rotate(${marker.rotation}deg)` }}>
+                        style={{ transform: `translateX(-50%) rotate(${marker.rotation}deg)` }}
+                        onClick={(e) => handleMarkerRemove(marker.id, e)} // Click label to remove
+                      >
                         {/* Sticker body with paper-like shadow */}
                         <div className={`relative px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider text-white whitespace-nowrap
                           transform transition-transform duration-200 group-hover:scale-110 group-hover:rotate-0
@@ -1639,6 +1725,51 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
                       </div>
                     </div>
                   ))}
+
+                  {/* One-click Preview Button - Bottom Right */}
+                  {generatedImageUrl && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setPreviewImage(generatedImageUrl); }}
+                      className={`absolute bottom-6 right-6 p-2.5 rounded-full shadow-lg backdrop-blur-md transition-all duration-300 z-20 group hover:scale-110 active:scale-95
+                        ${isLightMode
+                          ? 'bg-white/60 hover:bg-white/90 text-zinc-600 hover:text-zinc-900 border border-white/20'
+                          : 'bg-black/40 hover:bg-black/70 text-zinc-400 hover:text-white border border-white/10'}`}
+                      title="全屏预览"
+                    >
+                      <ArrowsPointingOutIcon className="w-5 h-5" />
+                    </button>
+                  )}
+
+                  {/* UX Guidance: Click Hint - Shows briefly after image generation */}
+                  {showClickHint && markers.length === 0 && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+                      {/* Ripple pulse - subtle click indicator */}
+                      <div
+                        className="click-hint-ripple absolute"
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: '50%',
+                          border: isLightMode ? '2px solid rgba(13, 153, 153, 0.6)' : '2px solid rgba(0, 255, 255, 0.5)',
+                          left: '50%',
+                          top: '50%',
+                        }}
+                      />
+                      {/* Second ripple with delay for layered effect */}
+                      <div
+                        className="click-hint-ripple absolute"
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: '50%',
+                          border: isLightMode ? '2px solid rgba(13, 153, 153, 0.4)' : '2px solid rgba(0, 255, 255, 0.35)',
+                          left: '50%',
+                          top: '50%',
+                          animationDelay: '0.6s',
+                        }}
+                      />
+                    </div>
+                  )}
                 </>
               )}
 
@@ -1727,80 +1858,46 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
               <button
                 onClick={handleGenerate}
                 disabled={!previewUrl || genState.status === 'generating'}
-                onMouseMove={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setGenerateBtnGlow({ x: e.clientX - rect.left, y: e.clientY - rect.top, active: true });
-                }}
-                onMouseEnter={() => setGenerateBtnGlow(prev => ({ ...prev, active: true }))}
-                onMouseLeave={() => setGenerateBtnGlow(prev => ({ ...prev, active: false }))}
-                className={`w-full h-full relative overflow-hidden group transition-all duration-200 ease-out active:scale-[0.95] active:brightness-90
-                            ${genState.status === 'generating'
-                    ? 'cursor-wait'
-                    : !previewUrl
-                      ? 'cursor-not-allowed'
-                      : 'cursor-pointer'
-                  }`}
-              >
-                {/* Mouse-following glow effect */}
-                {generateBtnGlow.active && previewUrl && genState.status !== 'generating' && (
-                  <div
-                    className="absolute pointer-events-none transition-opacity duration-300"
-                    style={{
-                      left: generateBtnGlow.x,
-                      top: generateBtnGlow.y,
-                      width: 150,
-                      height: 150,
-                      transform: 'translate(-50%, -50%)',
-                      background: isLightMode
-                        ? 'radial-gradient(circle, rgba(13,153,153,0.25) 0%, rgba(13,153,153,0) 70%)'
-                        : 'radial-gradient(circle, rgba(0,255,255,0.2) 0%, rgba(0,255,255,0) 70%)',
-                      borderRadius: '50%',
-                    }}
-                  />
-                )}
-                {/* Background Layer */}
-                <div className={`absolute inset-0 transition-all duration-500
-                  ${genState.status === 'generating'
-                    ? isLightMode ? 'bg-zinc-100' : 'bg-zinc-900'
-                    : !previewUrl
-                      ? isLightMode ? 'bg-zinc-100/50' : 'bg-zinc-900/30'
-                      : isLightMode ? 'bg-zinc-200 group-hover:bg-zinc-300' : 'bg-zinc-800 group-hover:bg-zinc-900'
-                  }`} />
-
-                {/* Border Frame - 淡色边框 */}
-                <div className={`absolute inset-0 border transition-all duration-200
+                onMouseEnter={() => { if (!previewUrl) setShowGenerateTooltip(true); }}
+                onMouseLeave={() => setShowGenerateTooltip(false)}
+                className={`w-full h-full relative overflow-hidden group transition-all duration-300
                   ${!previewUrl
-                    ? isLightMode ? 'border-zinc-200/50' : 'border-zinc-700/30'
-                    : genState.status === 'generating'
-                      ? isLightMode ? 'border-zinc-300/60' : 'border-zinc-600/50'
-                      : isLightMode ? 'border-zinc-300/80 group-hover:border-zinc-400' : 'border-zinc-600/50 group-hover:border-zinc-500'
-                  }`} />
+                    ? 'cursor-not-allowed opacity-40'
+                    : 'cursor-pointer hover:shadow-lg active:scale-[0.98]'}`}
+              >
+                {/* Background & Surface - Glossy Black/White */}
+                <div className={`absolute inset-0 transition-all duration-300
+                  ${isLightMode
+                    ? 'bg-gradient-to-br from-zinc-800 to-black'
+                    : 'bg-gradient-to-br from-zinc-100 to-zinc-300'}`}
+                />
 
-                {/* Generating: Simple progress line */}
-                {genState.status === 'generating' && (
-                  <div className={`absolute bottom-0 left-0 h-[2px] yohji-progress ${isLightMode ? 'bg-zinc-800' : 'bg-white'}`} />
+                {/* Glass Shine Overlay - Top Half */}
+                <div className={`absolute inset-x-0 top-0 h-1/2 opacity-10 bg-gradient-to-b from-white to-transparent`} />
+
+                {/* Sweep Shine Animation */}
+                {previewUrl && genState.status !== 'generating' && (
+                  <div className={`absolute inset-0 -translate-x-[150%] skew-x-[-20deg] group-hover:animate-[shine-sweep_0.75s_ease-in-out_forwards]
+                    ${isLightMode ? 'bg-gradient-to-r from-transparent via-white/20 to-transparent' : 'bg-gradient-to-r from-transparent via-white/40 to-transparent'}`} />
                 )}
 
-                {/* Ready Pulse Effect - when button is clickable */}
-                {previewUrl && genState.status !== 'generating' && (
-                  <div className={`absolute inset-0 animate-[softPulse_3s_ease-in-out_infinite] ${isLightMode ? 'bg-zinc-400/10' : 'bg-white/5'}`} />
+                {/* Generating: Progress Line */}
+                {genState.status === 'generating' && (
+                  <div className={`absolute bottom-0 left-0 h-[3px] w-full z-20 overflow-hidden bg-black/20`}>
+                    <div className={`h-full w-full origin-left animate-[yohjiProgress_2s_ease-in-out_infinite] ${isLightMode ? 'bg-white' : 'bg-black'}`} />
+                  </div>
                 )}
 
                 {/* Content */}
-                <div className={`relative z-10 h-full flex items-center justify-center gap-3 px-6 transition-all duration-500
-                  ${!previewUrl ? 'opacity-50' : 'opacity-100'}`}>
+                <div className="relative z-10 h-full flex items-center justify-center gap-3 px-6">
                   {genState.status === 'generating' ? (
-                    <div className="flex items-center gap-3">
-                      {/* Simple loading indicator - Minimalist Text Only */}
-                      <span className={`text-xs tracking-[0.2em] font-['Noto_Serif_SC_Variable'] animate-pulse ${isLightMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                        GENERATING...
-                      </span>
-                    </div>
+                    <span className={`text-xs tracking-[0.25em] font-['Noto_Serif_SC_Variable'] animate-pulse font-bold
+                         ${isLightMode ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      GENERATING...
+                    </span>
                   ) : (
-                    <span className={`text-sm font-medium tracking-[0.2em] font-['Noto_Serif_SC_Variable'] transition-colors duration-500
-                      ${!previewUrl
-                        ? isLightMode ? 'text-zinc-900' : 'text-zinc-400'
-                        : isLightMode ? 'text-zinc-900 group-hover:text-black' : 'text-zinc-100 group-hover:text-white'}`}>
+                    <span className={`text-sm font-bold tracking-[0.2em] font-['Noto_Serif_SC_Variable'] transition-all duration-300
+                      ${isLightMode ? 'text-zinc-100 group-hover:text-white' : 'text-zinc-900 group-hover:text-black'}`}>
                       {generatedImageUrl ? '重新生成' : '立即生成'}
                     </span>
                   )}
@@ -1849,62 +1946,33 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
                   if (mobileGuideStep === 5) advanceMobileGuide(6);
                 }}
                 disabled={markers.length === 0}
-                onMouseMove={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setCollectBtnGlow({ x: e.clientX - rect.left, y: e.clientY - rect.top, active: true });
-                }}
-                onMouseEnter={() => setCollectBtnGlow(prev => ({ ...prev, active: true }))}
-                onMouseLeave={() => setCollectBtnGlow(prev => ({ ...prev, active: false }))}
-                className={`w-full h-full relative overflow-hidden group transition-all duration-200 ease-out active:scale-[0.95] active:brightness-90
-                  ${markers.length === 0 ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                className={`w-full h-full relative overflow-hidden group transition-all duration-300
+                  ${markers.length === 0 ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:shadow-lg active:scale-[0.98]'}`}
               >
-                {/* Mouse-following glow effect */}
-                {collectBtnGlow.active && markers.length > 0 && (
-                  <div
-                    className="absolute pointer-events-none transition-opacity duration-300"
-                    style={{
-                      left: collectBtnGlow.x,
-                      top: collectBtnGlow.y,
-                      width: 120,
-                      height: 120,
-                      transform: 'translate(-50%, -50%)',
-                      background: isLightMode
-                        ? 'radial-gradient(circle, rgba(13,153,153,0.3) 0%, rgba(13,153,153,0) 70%)'
-                        : 'radial-gradient(circle, rgba(0,255,255,0.25) 0%, rgba(0,255,255,0) 70%)',
-                      borderRadius: '50%',
-                    }}
-                  />
-                )}
-                {/* Background */}
-                <div className={`absolute inset-0 transition-all duration-500
-                  ${markers.length === 0
-                    ? isLightMode ? 'bg-zinc-100/50' : 'bg-zinc-900/30'
-                    : isLightMode ? 'bg-zinc-200 group-hover:bg-zinc-300' : 'bg-zinc-800 group-hover:bg-zinc-900'}`} />
+                {/* Background & Surface - Glossy Black/White */}
+                <div className={`absolute inset-0 transition-all duration-300
+                  ${isLightMode
+                    ? 'bg-gradient-to-br from-zinc-800 to-black'
+                    : 'bg-gradient-to-br from-zinc-100 to-zinc-300'}`}
+                />
 
-                {/* Border Frame - 淡色边框 */}
-                <div className={`absolute inset-0 border transition-all duration-200
-                  ${markers.length === 0
-                    ? isLightMode ? 'border-zinc-200/50' : 'border-zinc-700/30'
-                    : isLightMode ? 'border-zinc-300/80 group-hover:border-zinc-400' : 'border-zinc-600/50 group-hover:border-zinc-500'}`} />
+                {/* Glass Shine Overlay - Top Half */}
+                <div className={`absolute inset-x-0 top-0 h-1/2 opacity-10 bg-gradient-to-b from-white to-transparent`} />
 
-                {/* Ready Pulse Effect - when button is clickable */}
+                {/* Sweep Shine Animation */}
                 {markers.length > 0 && (
-                  <div className={`absolute inset-0 animate-[softPulse_3s_ease-in-out_infinite] ${isLightMode ? 'bg-[#0d9999]/5' : 'bg-[#00ffff]/5'}`} />
+                  <div className={`absolute inset-0 -translate-x-[150%] skew-x-[-20deg] group-hover:animate-[shine-sweep_0.75s_ease-in-out_forwards]
+                    ${isLightMode ? 'bg-gradient-to-r from-transparent via-white/20 to-transparent' : 'bg-gradient-to-r from-transparent via-white/40 to-transparent'}`} />
                 )}
 
                 {/* Content */}
-                <div className={`relative z-10 h-full flex items-center justify-center gap-2 px-4 transition-all duration-500
-                  ${markers.length === 0 ? 'opacity-50' : 'opacity-100'}`}>
-                  <span className={`text-sm font-medium tracking-[0.2em] font-['Noto_Serif_SC_Variable'] transition-colors duration-500
-                    ${markers.length === 0
-                      ? isLightMode ? 'text-zinc-900' : 'text-zinc-400'
-                      : isLightMode ? 'text-zinc-900 group-hover:text-[#0d9999]' : 'text-zinc-100 group-hover:text-[#00ffff]'}`}>
+                <div className={`relative z-10 h-full flex items-center justify-center gap-2 px-4`}>
+                  <span className={`text-sm font-bold tracking-[0.2em] font-['Noto_Serif_SC_Variable'] transition-all 
+                     ${isLightMode ? 'text-zinc-100 group-hover:text-white' : 'text-zinc-900 group-hover:text-black'}`}>
                     灵感收藏
                   </span>
-                  <span className={`text-[10px] font-mono transition-colors duration-500
-                    ${markers.length === 0
-                      ? isLightMode ? 'text-zinc-800' : 'text-zinc-600'
-                      : isLightMode ? 'text-zinc-800 group-hover:text-[#0d9999]' : 'text-zinc-400 group-hover:text-[#00ffff]'}`}>
+                  <span className={`text-[10px] font-mono transition-all opacity-80
+                     ${isLightMode ? 'text-zinc-300' : 'text-zinc-600'}`}>
                     [{markers.length}]
                   </span>
                 </div>
@@ -2447,27 +2515,19 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
               </div>
 
               <h3 className={`text-center text-lg font-bold font-['Noto_Serif_SC_Variable'] mb-3 ${isLightMode ? 'text-zinc-800' : 'text-white'}`}>
-                生成遇到问题
+                服务暂时繁忙
               </h3>
 
-              <p className={`text-center text-sm font-['Noto_Serif_SC_Variable'] mb-4 ${isLightMode ? 'text-zinc-800' : 'text-zinc-400'}`}>
-                如出现生成相同图片，请尝试：
+              <p className={`text-center text-sm font-['Noto_Serif_SC_Variable'] mb-4 leading-relaxed ${isLightMode ? 'text-zinc-800' : 'text-zinc-400'}`}>
+                这是 Google 侧的临时限制，通常稍后重试即可恢复。<br />
+                但如果频繁出现，建议切换区域。
               </p>
 
-              <ul className={`text-sm font-['Noto_Serif_SC_Variable'] space-y-2 mb-6 ${isLightMode ? 'text-zinc-800' : 'text-zinc-400'}`}>
-                <li className="flex items-start gap-2">
-                  <span className="text-[#00ffff]">•</span>
-                  切换 VPN 地区（日本/新加坡/美国等）
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-[#00ffff]">•</span>
-                  将 VPN 设置为全局代理模式
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-[#00ffff]">•</span>
-                  检查网络连接是否稳定
-                </li>
-              </ul>
+              <div className="text-center mb-6">
+                <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${isLightMode ? 'bg-green-100 text-green-700' : 'bg-[#00ffff]/20 text-[#00ffff]'}`}>
+                  本次失败不扣除积分
+                </span>
+              </div>
 
               <button
                 onClick={() => setShowVpnAlert(false)}
@@ -2484,28 +2544,80 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
       {
         previewImage && (
           <div
-            className="fixed inset-0 z-[1000] flex items-center justify-center bg-zinc-900/60 backdrop-blur-md animate-in fade-in duration-200"
-            onClick={() => setPreviewImage(null)}
+            ref={previewModalRef}
+            className={`fixed inset-0 z-[1000] flex items-center justify-center bg-zinc-900/60 backdrop-blur-md animate-in fade-in duration-200 
+              ${isPreviewZoomed ? 'overflow-auto block' : 'overflow-hidden'}`}
+            onClick={(e) => {
+              if (e.target === e.currentTarget || e.target === previewModalRef.current) setPreviewImage(null);
+            }}
           >
-            <div className="relative max-w-[98vw] max-h-[98vh] flex flex-col items-center animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-              <div className="relative shadow-2xl rounded-sm overflow-hidden bg-black">
+            <div
+              className={`relative transition-all duration-200 ease-out 
+                ${isPreviewZoomed ? 'w-full min-h-full flex items-center justify-center p-0' : 'max-w-[98vw] max-h-[98vh] flex flex-col items-center animate-in zoom-in-95'}`}
+              onClick={(e) => {
+                // Let clicks propagate to container unless on specific interactive elements
+              }}
+            >
+              <div className={`relative shadow-2xl rounded-sm bg-black transition-all duration-300 ${isPreviewZoomed ? 'shadow-none rounded-none overflow-visible bg-transparent' : 'overflow-hidden'}`}>
                 <img
                   src={previewImage}
-                  className="max-w-[95vw] max-h-[95vh] object-contain block"
+                  // Removed transition-all to ensure instant layout update for accurate scroll calculation
+                  className={`block
+                    ${isPreviewZoomed
+                      ? 'max-w-none cursor-zoom-out'
+                      : 'max-w-[95vw] max-h-[95vh] object-contain cursor-zoom-in'}`}
                   alt="Full Preview"
+                  onClick={(e) => {
+                    e.stopPropagation();
+
+                    if (isPreviewZoomed) {
+                      setIsPreviewZoomed(false);
+                    } else {
+                      // 1. Capture click relative position (0-1)
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const xPercent = (e.clientX - rect.left) / rect.width;
+                      const yPercent = (e.clientY - rect.top) / rect.height;
+
+                      // 2. Switch state (Render happens)
+                      setIsPreviewZoomed(true);
+
+                      // 3. Scroll to mapped position after layout update
+                      setTimeout(() => {
+                        if (previewModalRef.current) {
+                          const container = previewModalRef.current;
+                          const img = container.querySelector('img');
+
+                          if (img) {
+                            const scrollWidth = img.offsetWidth;
+                            const scrollHeight = img.offsetHeight;
+                            const clientWidth = container.clientWidth;
+                            const clientHeight = container.clientHeight;
+
+                            // Center the point: PointInImage - ViewportHalf
+                            // ScrollLeft is bounded by browser automatically
+                            container.scrollTo({
+                              left: scrollWidth * xPercent - clientWidth / 2,
+                              top: scrollHeight * yPercent - clientHeight / 2,
+                              behavior: 'instant' // Ensure no smooth scroll interference
+                            });
+                          }
+                        }
+                      }, 0); // Execute immediately after render cycle
+                    }
+                  }}
                 />
               </div>
 
-              {/* Close Button */}
+              {/* Close Button - Fixed Position now */}
               <button
                 onClick={() => setPreviewImage(null)}
-                className="absolute -top-12 right-0 md:-right-12 md:top-0 bg-white/10 hover:bg-white/20 text-white p-2 rounded-full backdrop-blur-md transition-all"
+                className="fixed top-6 right-6 z-[1010] bg-white/10 hover:bg-white/20 text-white p-2 rounded-full backdrop-blur-md transition-all border border-white/10 shadow-lg"
               >
                 <XMarkIcon className="w-6 h-6" />
               </button>
 
-              <div className="mt-4 px-4 py-1.5 bg-black/50 backdrop-blur-md rounded-full text-white/80 text-xs font-mono border border-white/10">
-                点击空白处关闭预览
+              <div className={`mt-4 px-4 py-1.5 bg-black/50 backdrop-blur-md rounded-full text-white/80 text-xs font-mono border border-white/10 transition-opacity duration-300 ${isPreviewZoomed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                Esc 关闭 / 点击局部放大
               </div>
             </div>
           </div>

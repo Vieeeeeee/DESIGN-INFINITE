@@ -197,3 +197,49 @@ Output: Professional Architectural Photography, 2K Resolution, Noise-free, Sharp
     throw error;
   }
 };
+
+/**
+ * Download image via authenticated endpoint
+ * Uses fetch + blob approach to trigger browser download
+ * @param imageUrl - Full URL or just filename of the image (e.g., https://api.abdc.online/generated/xxx.png or xxx.png)
+ * @param downloadFilename - Filename to save as (e.g., upscaled_123.png)
+ */
+export const downloadImage = async (imageUrl: string, downloadFilename: string): Promise<void> => {
+  // Extract filename from URL if it's a full URL
+  const urlFilename = imageUrl.split('/').pop() || downloadFilename;
+
+  const response = await fetch(
+    normalizeUrl(getApiBase(), `/api/images/${urlFilename}/download`),
+    {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${getAuthToken()}`,
+      },
+    }
+  );
+
+  // Handle 401 unauthorized
+  if (response.status === 401) {
+    handleUnauthorized();
+    throw new Error('登录已过期，请重新登录');
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Download failed: ${response.status} - ${errorText}`);
+  }
+
+  // Convert to blob and trigger download
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = downloadFilename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  // Clean up blob URL after download triggers
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+

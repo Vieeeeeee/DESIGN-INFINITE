@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import db from '../database.js';
 import config from '../config.js';
 import { generateToken } from '../middleware/auth.js';
-import { sendVerificationEmail } from '../services/email.js';
+import { sendVerificationEmailAsync } from '../services/email.js';
 import {
     generateVerificationCode,
     generateInviteCode,
@@ -62,8 +62,8 @@ router.post('/send-code', async (req, res) => {
       VALUES (?, ?, ?, ?)
     `).run(email, code, type, expiresAt);
 
-        // 发送邮件
-        await sendVerificationEmail(email, code, type);
+        // 异步发送邮件（立即返回，后台发送）
+        sendVerificationEmailAsync(email, code, type);
 
         res.json({ message: '验证码已发送，请查收邮件' });
     } catch (error) {
