@@ -1,6 +1,7 @@
 /**
  * Vertex AI Service
  * 使用 Service Account 鉴权调用 Vertex AI Gemini API
+ * 支持多区域故障转移
  */
 import { GoogleAuth } from 'google-auth-library';
 
@@ -8,8 +9,13 @@ import { GoogleAuth } from 'google-auth-library';
 // 配置
 // ============================================================================
 const PROJECT_ID = process.env.VERTEX_AI_PROJECT || 'vibe-design';
-const REGION = process.env.VERTEX_AI_REGION || 'asia-southeast1';
 const MODEL = process.env.VERTEX_AI_MODEL || 'gemini-3-pro-image-preview';
+
+// 区域配置
+// gemini-3-pro-image-preview 只在 global 可用
+const REGIONS = [
+    'global',
+];
 
 // global region 使用不同的 base URL
 function getVertexBaseUrl(region) {
@@ -18,10 +24,15 @@ function getVertexBaseUrl(region) {
         : `https://${region}-aiplatform.googleapis.com`;
 }
 
-const ENDPOINT = `${getVertexBaseUrl(REGION)}/v1/projects/${PROJECT_ID}/locations/${REGION}/publishers/google/models/${MODEL}:generateContent`;
+// 根据区域生成 endpoint
+function getEndpoint(region) {
+    return `${getVertexBaseUrl(region)}/v1/projects/${PROJECT_ID}/locations/${region}/publishers/google/models/${MODEL}:generateContent`;
+}
 
-// 启动时打印 endpoint 便于验证
-console.log('[VertexAI] Endpoint:', ENDPOINT);
+// 启动时打印配置
+console.log('[VertexAI] Project:', PROJECT_ID);
+console.log('[VertexAI] Model:', MODEL);
+console.log('[VertexAI] Regions (failover order):', REGIONS.join(' -> '));
 
 const DEFAULT_CONFIG = {
     temperature: 0.2,
@@ -228,10 +239,146 @@ export async function generateContent(prompt, options = {}) {
 // 图像生成 API
 // ============================================================================
 
-const IMAGE_TIMEOUT_MS = 60000; // 图像生成需要更长超时 (60s)
+const IMAGE_TIMEOUT_MS = 120000; // 图像生成需要更长超时 (120s)
+
+// 重试配置 (针对 429 RESOURCE_EXHAUSTED 错误)
+// 总等待时间约 2 分钟: 30s + 40s + 50s ≈ 120s
+const RETRY_CONFIG = {
+    maxRetries: 3,           // 3 次重试
+    baseDelayMs: 30000,      // 第一次重试等待 30s
+    maxDelayMs: 50000,       // 最大等待 50s
+    backoffMultiplier: 1.3,  // 较小的退避倍数
+};
 
 /**
- * 生成图像
+ * 延迟函数
+ */
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * 计算指数退避延迟时间
+ */
+function getRetryDelay(attempt) {
+    const delayMs = RETRY_CONFIG.baseDelayMs * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt);
+    // 添加 10% 的随机抖动
+    const jitter = delayMs * 0.1 * Math.random();
+    return Math.min(delayMs + jitter, RETRY_CONFIG.maxDelayMs);
+}
+
+/**
+ * 执行单次图像生成请求 (带详细 429 诊断日志)
+ * @param {object} requestBody - 请求体
+ * @param {string} token - Access Token
+ * @param {string} region - 目标区域
+ */
+async function executeImageRequest(requestBody, token, region) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
+    const started = Date.now();
+    const endpoint = getEndpoint(region);
+
+    try {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+        const elapsed = Date.now() - started;
+
+        // 先读取原始文本（即使失败也能读）
+        const rawText = await response.text();
+        const headers = Object.fromEntries(response.headers.entries());
+
+        if (!response.ok) {
+            // 尝试解析 JSON
+            let data = {};
+            try {
+                data = JSON.parse(rawText);
+            } catch (_) {
+                // 不是 JSON
+            }
+
+            // 429 错误时打印完整诊断信息
+            if (response.status === 429) {
+                console.error('[VertexAI][429 DIAGNOSTIC] ===========================');
+                console.error('[VertexAI][429] region:', region);
+                console.error('[VertexAI][429] status:', response.status, response.statusText);
+                console.error('[VertexAI][429] elapsed:', elapsed + 'ms');
+                console.error('[VertexAI][429] headers:', JSON.stringify(headers, null, 2));
+                console.error('[VertexAI][429] body (raw):', rawText.slice(0, 5000));
+
+                // 关键：打印 error.details（如果有 QuotaFailure/violations 就是配额问题）
+                if (data.error?.details) {
+                    console.error('[VertexAI][429] error.details:', JSON.stringify(data.error.details, null, 2));
+                } else {
+                    console.error('[VertexAI][429] error.details: (none - likely DSQ/shared capacity issue)');
+                }
+                console.error('[VertexAI][429 DIAGNOSTIC] ===========================');
+            } else {
+                console.error('[VertexAI] Image API error:', JSON.stringify(data, null, 2));
+            }
+
+            if (response.status === 401) {
+                clearTokenCache();
+            }
+
+            const error = new Error(data.error?.message || `API request failed with status ${response.status}`);
+            error.status = response.status;
+            error.code = data.error?.code || 'API_ERROR';
+            error.rawError = data;
+            throw error;
+        }
+
+        // 成功时解析 JSON
+        const data = JSON.parse(rawText);
+
+        // 提取图像响应
+        const part = data.candidates?.[0]?.content?.parts?.[0];
+        const base64 = part?.inlineData?.data;
+        const mimeType = part?.inlineData?.mimeType || 'image/png';
+
+        if (!base64) {
+            console.error('[VertexAI] No image in response:', JSON.stringify(data, null, 2));
+            const error = new Error('No image content in response');
+            error.status = 500;
+            error.code = 'EMPTY_RESPONSE';
+            throw error;
+        }
+
+        return { mimeType, base64 };
+
+    } catch (err) {
+        clearTimeout(timeoutId);
+
+        if (err.name === 'AbortError') {
+            const error = new Error('Request timeout after 120 seconds');
+            error.status = 504;
+            error.code = 'TIMEOUT';
+            throw error;
+        }
+
+        if (err.status) {
+            throw err;
+        }
+
+        console.error('[VertexAI] Unexpected error:', err.message);
+        const error = new Error('Failed to connect to Vertex AI');
+        error.status = 502;
+        error.code = 'NETWORK_ERROR';
+        throw error;
+    }
+}
+
+/**
+ * 生成图像 (带 429 重试)
  * @param {string} prompt - 图像描述
  * @param {object} options - 配置
  * @param {string} options.imageSize - 图像尺寸 (如 "2K")
@@ -296,74 +443,56 @@ export async function generateImage(prompt, options = {}) {
         throw error;
     }
 
-    // 设置超时 (图像生成需要更长时间)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
+    // 多区域故障转移 + 时间退避重试
+    // 策略：遇到 429 立即切换到下一个区域，所有区域都 429 后等待一段时间再重试
+    let lastError;
 
-    try {
-        const response = await fetch(ENDPOINT, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody),
-            signal: controller.signal,
-        });
+    for (let round = 0; round <= RETRY_CONFIG.maxRetries; round++) {
+        // 如果不是第一轮，需要等待
+        if (round > 0) {
+            const delayMs = getRetryDelay(round - 1);
+            console.log(`[VertexAI] All regions exhausted, waiting ${Math.round(delayMs / 1000)}s before retry round ${round + 1}/${RETRY_CONFIG.maxRetries + 1}`);
+            await delay(delayMs);
 
-        clearTimeout(timeoutId);
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            console.error('[VertexAI] Image API error:', JSON.stringify(data, null, 2));
-
-            if (response.status === 401) {
-                clearTokenCache();
+            // 刷新 token
+            try {
+                token = await getAccessToken();
+            } catch (tokenErr) {
+                console.error('[VertexAI] Token refresh failed:', tokenErr.message);
             }
-
-            const error = new Error(data.error?.message || `API request failed with status ${response.status}`);
-            error.status = response.status;
-            error.code = data.error?.code || 'API_ERROR';
-            error.rawError = data;
-            throw error;
         }
 
-        // 提取图像响应
-        const part = data.candidates?.[0]?.content?.parts?.[0];
-        const base64 = part?.inlineData?.data;
-        const mimeType = part?.inlineData?.mimeType || 'image/png';
+        // 遍历所有区域
+        for (let regionIdx = 0; regionIdx < REGIONS.length; regionIdx++) {
+            const region = REGIONS[regionIdx];
 
-        if (!base64) {
-            console.error('[VertexAI] No image in response:', JSON.stringify(data, null, 2));
-            const error = new Error('No image content in response');
-            error.status = 500;
-            error.code = 'EMPTY_RESPONSE';
-            throw error;
+            try {
+                console.log(`[VertexAI] Trying region: ${region} (round ${round + 1}, region ${regionIdx + 1}/${REGIONS.length})`);
+                const result = await executeImageRequest(requestBody, token, region);
+                console.log(`[VertexAI] Success with region: ${region}`);
+                return result;
+            } catch (err) {
+                lastError = err;
+
+                // 429 或 404 错误：立即尝试下一个区域，不等待
+                // 429 = 资源耗尽，404 = 模型在该区域不存在
+                if (err.status === 429 || err.status === 404) {
+                    console.log(`[VertexAI] Region ${region} returned ${err.status}, trying next region...`);
+                    continue; // 尝试下一个区域
+                }
+
+                // 其他错误：直接抛出，不重试
+                throw err;
+            }
         }
 
-        return { mimeType, base64 };
-
-    } catch (err) {
-        clearTimeout(timeoutId);
-
-        if (err.name === 'AbortError') {
-            const error = new Error('Request timeout after 60 seconds');
-            error.status = 504;
-            error.code = 'TIMEOUT';
-            throw error;
-        }
-
-        if (err.status) {
-            throw err;
-        }
-
-        console.error('[VertexAI] Unexpected error:', err.message);
-        const error = new Error('Failed to connect to Vertex AI');
-        error.status = 502;
-        error.code = 'NETWORK_ERROR';
-        throw error;
+        // 所有区域都 429 了，继续下一轮
+        console.log(`[VertexAI] All ${REGIONS.length} regions returned 429`);
     }
+
+    // 所有重试都失败了
+    console.error(`[VertexAI] All retry rounds exhausted`);
+    throw lastError;
 }
 
 export { formatError };
