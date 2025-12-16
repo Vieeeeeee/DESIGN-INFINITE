@@ -7,7 +7,6 @@ import { cn } from './utils/cn';
 import { GenerationState } from './types';
 import { mockGenerateImageApi, smartCropFromClick, fileToBase64, getDominantColor } from './services/imageProcessor';
 import { generateImageVariation, upscaleImage, downloadImage } from './services/geminiService';
-import { buildGenerationPrompt, getGenerationConfig } from './config/prompts';
 import { userApi, inviteApi } from './services/api';
 import { generateInviteShareText } from './utils/inviteTemplate';
 import {
@@ -925,19 +924,19 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
     }
 
     let imageUrl: string | null = null;
-    const config = getGenerationConfig(fidelityLevel);
-    const promptToSend = buildGenerationPrompt(selectedRoomTypes, fidelityLevel);
     let usedMockFallback = false;
 
     try {
-      // 先尝试生成图片
+      // 先尝试生成图片 (只传递 tags 和 level，prompt 在后端构建)
       try {
-        imageUrl = await generateImageVariation(promptToSend, previewUrl, { temperature: config.temp, topP: config.topP });
+        imageUrl = await generateImageVariation(selectedRoomTypes, fidelityLevel, previewUrl);
       } catch (aiError) {
         console.warn("Real AI generation failed, falling back to mock.", aiError);
         // 使用了回退机制，标记并显示VPN提示
         usedMockFallback = true;
-        imageUrl = await mockGenerateImageApi(promptToSend, previewUrl);
+        // Mock 仍需完整 prompt（仅用于本地调试）
+        const mockPrompt = `Mock prompt for tags: ${selectedRoomTypes.join(', ')} at level ${fidelityLevel}`;
+        imageUrl = await mockGenerateImageApi(mockPrompt, previewUrl);
       }
 
       // 如果没有成功生成图片，不扣分
@@ -1142,7 +1141,6 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
         return;
       }
     } catch (err: any) {
-      // 积分检查失败时阻止操作
       console.error("Points check failed:", err);
       setPointsError('积分检查失败，请刷新页面重试');
       setUpscaleStatus({ visible: false, state: 'idle', completedCount: 0, totalCount: 0 });
@@ -1150,15 +1148,17 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
     }
 
     try {
+      // 收集所有放大后的图片 (URL 来自后端)
+      const upscaledImages: { filename: string; url: string }[] = [];
+
       for (const item of itemsToProcess) {
         try {
-          // 先尝试放大
-          const upscaledBase64 = await upscaleImage(item.url);
+          // 放大图片，返回 URL
+          const upscaledUrl = await upscaleImage(item.url);
 
-          // 放大成功后再扣积分
+          // 放大成功后扣积分
           try {
             const consumeResult = await userApi.consumePoints(50, 'upscale');
-            // 同步更新显示的积分
             if (onUpdatePoints && consumeResult) {
               onUpdatePoints(consumeResult.newPoints, consumeResult.newDailyPoints);
             }
@@ -1166,18 +1166,50 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
             console.warn("Points consumption failed:", consumeErr);
           }
 
-          // Use authenticated fetch-based download to trigger browser download
-          await downloadImage(upscaledBase64, `upscaled_${item.id}.png`);
+          // 收集放大后的图片 URL
+          upscaledImages.push({
+            filename: `upscaled_${item.id}.png`,
+            url: upscaledUrl
+          });
 
           setUpscaleStatus(prev => ({ ...prev, completedCount: prev.completedCount + 1 }));
         } catch (e) {
-          // 放大失败不扣分
-          console.error(e);
+          console.error("Upscale failed for item:", item.id, e);
         }
       }
+
+      // 所有图片放大完成后，打包成 ZIP 下载
+      if (upscaledImages.length > 0) {
+        const zip = new JSZip();
+        const folder = zip.folder("upscaled-images");
+
+        // 从 URL 获取图片并添加到 ZIP
+        for (const img of upscaledImages) {
+          try {
+            const response = await fetch(img.url);
+            if (response.ok) {
+              const blob = await response.blob();
+              folder?.file(img.filename, blob);
+            }
+          } catch (e) {
+            console.error("Failed to fetch image for zip:", img.filename, e);
+          }
+        }
+
+        // 生成并下载 ZIP
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(zipBlob);
+        link.download = `upscaled_${timestamp}_${upscaledImages.length}张.zip`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }
+
       setUpscaleStatus(prev => ({ ...prev, state: 'success' }));
       setTimeout(() => setUpscaleStatus(prev => ({ ...prev, visible: false, state: 'idle' })), 5000);
     } catch (error) {
+      console.error("Upscale batch error:", error);
       setUpscaleStatus(prev => ({ ...prev, visible: false }));
     }
   }
@@ -1512,7 +1544,7 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
                   <input type="range" min="1" max="5" step="1" value={fidelityLevel} onChange={(e) => setFidelityLevel(parseInt(e.target.value))}
                     className="yohji-slider" />
                   <div className="flex justify-between items-center mt-2">
-                    <span className={`text-[11px] font-['Noto_Serif_SC_Variable'] ${isLightMode ? 'text-zinc-800' : 'text-zinc-500'}`}>{getGenerationConfig(fidelityLevel).bias}</span>
+                    <span className={`text-[11px] font-['Noto_Serif_SC_Variable'] ${isLightMode ? 'text-zinc-800' : 'text-zinc-500'}`}>{['参考图主导', '参考图偏重', '平衡模式', '提示词偏重', '提示词主导'][fidelityLevel - 1]}</span>
                     <div className="flex gap-1.5">
                       {[1, 2, 3, 4, 5].map(v => (
                         <div key={v} className={`w-1.5 h-1.5 rounded-full transition-colors ${fidelityLevel === v ? (isLightMode ? 'bg-[#0d9999]' : 'bg-[#00ffff]') : (isLightMode ? 'bg-zinc-300' : 'bg-zinc-700')}`}></div>

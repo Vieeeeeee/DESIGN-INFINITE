@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { generateContent, generateImage, formatError } from '../services/vertexai.js';
+import { buildGenerationPrompt, getGenerationConfig } from '../services/prompts.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -74,7 +75,8 @@ router.post('/gemini', async (req, res) => {
  * 
  * Request Body:
  * {
- *   prompt: string,           // 必填，图像描述
+ *   tags?: string[],          // 空间标签数组 (可选, 默认 [])
+ *   level?: number,           // 创意等级 1-5 (可选, 默认 3)
  *   imageSize?: string,       // 可选, 默认 "2K"
  *   aspectRatio?: string,     // 可选, 默认 "1:1"
  *   inputImage?: string       // 可选, base64 输入图像
@@ -82,21 +84,16 @@ router.post('/gemini', async (req, res) => {
  */
 router.post('/gemini/image', authMiddleware, async (req, res) => {
     const startTime = Date.now();
-    const { prompt, imageSize, aspectRatio, inputImage } = req.body;
+    const { tags, level, imageSize, aspectRatio, inputImage } = req.body;
     const userId = req.user.id; // 从 JWT 中获取用户 ID
 
     // 参数验证
-    if (!prompt) {
-        return res.status(400).json({
-            error: { message: 'prompt is required', status: 400, code: 'INVALID_ARGUMENT' }
-        });
-    }
+    const safeTags = Array.isArray(tags) ? tags : [];
+    const safeLevel = typeof level === 'number' && level >= 1 && level <= 5 ? level : 3;
 
-    if (typeof prompt !== 'string') {
-        return res.status(400).json({
-            error: { message: 'prompt must be a string', status: 400, code: 'INVALID_ARGUMENT' }
-        });
-    }
+    // 在服务端构建完整 prompt（不暴露给前端）
+    const prompt = buildGenerationPrompt(safeTags, safeLevel);
+    const config = getGenerationConfig(safeLevel);
 
     try {
         const result = await generateImage(prompt, { imageSize, aspectRatio, inputImage });
@@ -105,8 +102,8 @@ router.post('/gemini/image', authMiddleware, async (req, res) => {
         // 二进制转换
         const buffer = Buffer.from(result.base64, 'base64');
 
-        // 脱敏日志：不打印 prompt 和 base64，只打印元数据
-        console.log(`[Gemini/Image] OK | ${elapsed}ms | size=${imageSize || '2K'} | ratio=${aspectRatio || '1:1'} | bytes=${buffer.length} | hasInput=${!!inputImage}`);
+        // 脱敏日志：只打印标签数和等级，不打印 prompt
+        console.log(`[Gemini/Image] OK | ${elapsed}ms | tags=${safeTags.length} | level=${safeLevel} | size=${imageSize || '2K'} | ratio=${aspectRatio || '1:1'} | bytes=${buffer.length} | hasInput=${!!inputImage}`);
         // 确保目录存在
         await mkdir(STATIC_DIR, { recursive: true });
 
@@ -128,6 +125,80 @@ router.post('/gemini/image', authMiddleware, async (req, res) => {
 
         // 脱敏日志：只打印错误码和参数元数据
         console.error(`[Gemini/Image] ERR ${status} | ${elapsed}ms | ${err.code || 'UNKNOWN'} | size=${imageSize || '2K'} | ratio=${aspectRatio || '1:1'}`);
+
+        res.status(status).json({ error: formatError(err, err.rawError) });
+    }
+});
+
+// 放大/修复专用提示词（服务端保密）
+const UPSCALE_PROMPT = `Act as a Professional Architectural Photographer and Image Restoration Expert.
+Task: Upscale and Repair this image to 2K resolution.
+
+CRITICAL INSTRUCTIONS:
+1. CLARITY & RESOLUTION: Make the image crystal clear. Transform it into a High-Fidelity architectural photograph. Eliminate all blurriness, fuzziness, and low-res pixelation.
+2. REPAIR & FIX: Aggressively identify and correct unrealistic structural errors, distorted objects, impossible geometry, and warping lines. Remove all AI artifacts and digital noise. Ensure furniture and architectural elements are physically logical.
+3. MATERIAL & TEXTURE: Enhance wood grain, stone textures, fabric weaves, and metal reflections to be hyper-realistic and tactile.
+4. REALISM: Ensure lighting, shadows, and reflections interact physically correctly.
+5. PRESERVATION: Maintain 90% of the original composition and design intent, but replace low-quality details with high-definition assets.
+
+Output: Professional Architectural Photography, 2K Resolution, Noise-free, Sharp Focus.`;
+
+/**
+ * POST /api/gemini/upscale
+ * 
+ * 放大/修复图像端点，使用固定的专用提示词
+ * 
+ * Request Body:
+ * {
+ *   inputImage: string       // 必填, base64 输入图像
+ * }
+ * 
+ * Response:
+ *   { url: string }  → Nginx 静态分发的图片 URL
+ */
+router.post('/gemini/upscale', authMiddleware, async (req, res) => {
+    const startTime = Date.now();
+    const { inputImage } = req.body;
+    const userId = req.user.id;
+
+    // 参数验证
+    if (!inputImage) {
+        return res.status(400).json({
+            error: { message: 'inputImage is required', status: 400, code: 'INVALID_ARGUMENT' }
+        });
+    }
+
+    try {
+        // 使用服务端保密的放大提示词
+        const result = await generateImage(UPSCALE_PROMPT, { imageSize: '2K', inputImage });
+        const elapsed = Date.now() - startTime;
+
+        // 二进制转换
+        const buffer = Buffer.from(result.base64, 'base64');
+
+        console.log(`[Gemini/Upscale] OK | ${elapsed}ms | userId=${userId} | bytes=${buffer.length}`);
+
+        // 确保目录存在
+        await mkdir(STATIC_DIR, { recursive: true });
+
+        // 生成文件名
+        const ext = result.mimeType === 'image/png' ? 'png' :
+            result.mimeType === 'image/webp' ? 'webp' : 'jpg';
+        const filename = `upscaled_${randomUUID()}.${ext}`;
+        const filepath = path.join(STATIC_DIR, filename);
+
+        // 写入文件
+        await writeFile(filepath, buffer);
+        console.log(`[Gemini/Upscale] Saved to ${filepath}`);
+
+        // 返回 JSON URL
+        res.json({ url: `${STATIC_URL_BASE}/${filename}` });
+
+    } catch (err) {
+        const elapsed = Date.now() - startTime;
+        const status = err.status || 500;
+
+        console.error(`[Gemini/Upscale] ERR ${status} | ${elapsed}ms | ${err.code || 'UNKNOWN'}`);
 
         res.status(status).json({ error: formatError(err, err.rawError) });
     }

@@ -1,0 +1,53 @@
+{
+  "project_name": "Architectural_Photoreal_9_Grid_Reference_Generator",
+  "version": "1.3-Lite",
+
+  "domain_definition": {
+    "photography_type": "Architectural Photography (Interior-primary, Exterior allowed)",
+    "usage_intent": "Generate a 9-panel architectural design reference that reads as a coherent architectural photo essay."
+  },
+
+  "global_constraints": {
+    "photorealism_only": "Real professional architectural photography only. No CGI, no 3D render look, no illustration or stylization.",
+    "lighting": "Natural or realistic ambient light, high dynamic range, soft shadows.",
+    "time_consistency": "All panels appear photographed within the same time window.",
+    "materials": "Real, buildable materials only (wood, stone, fabric, metal, concrete, glass, paint).",
+    "color_palette": "Strictly consistent white balance and color grading across all panels.",
+    "same_world_rule": "All panels belong to the same architectural project; interior and exterior views must share material language, construction logic, and overall character.",
+    "aesthetic_lineage": "Reads as a single architectural photo essay rather than separated interior/exterior coverage."
+  },
+
+  "camera_system": {
+    "lens_options_mm": [35, 50, 85],
+    "aperture_guideline": "Primarily f/5.6–f/11; use f/2.8–f/4 only for true details with full legibility.",
+    "camera_height": "Predominantly human eye level; exterior views may step back naturally but avoid dramatic perspectives."
+  },
+
+  "grid_specification": {
+    "final_canvas": "1:1",
+    "grid_layout": "3x3",
+    "dividers": "Pure white, equal-width divider lines",
+    "no_spanning_rule": "No visual element may cross or span across cells"
+  },
+
+  "shot_guidelines": {
+    "variation": "Panels may vary freely in distance and composition, as if by the same photographer moving around the space. Interior/exterior mix follows SPACE TYPE LOCK rules.",
+    "anti_redundancy": "No two panels may feel interchangeable in framing or emphasis.",
+    "focus_shift": "Attention shifts organically between spatial relationships, construction edges, material transitions, light, and atmosphere."
+  },
+
+  "design_reference_rules": {
+    "scale_legibility": "Architectural scale must remain realistic.",
+    "constructability": "Details must appear buildable in the real world.",
+    "readability_priority": "Design reference clarity takes precedence over photographic spectacle."
+  },
+
+  "output_rules": {
+    "aspect_ratio": "All panels are natively composed in 1:1.",
+    "text_overlay": "No text, labels, logos, or graphic overlays.",
+    "people": "Optional, scale reference only.",
+    "consistency": "Unified architectural language and atmosphere across all panels."
+  },
+
+  "final_prompt_instruction": "Generate a single square image containing a strictly aligned 3x3 grid with pure-white dividers. Each cell is an independent, photorealistic architectural photograph from the same architectural project. Panels may include interior views, exterior facades, or entrance scenes, provided they share consistent lighting, color grading, material language, and architectural character. Allow natural variation in viewpoint, distance, and composition, while avoiding systematic categorization or near-duplicate panels."
+}

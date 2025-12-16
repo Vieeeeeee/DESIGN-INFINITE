@@ -80,6 +80,30 @@ const apiRequest = async <T>(endpoint: string, body: object): Promise<T> => {
 };
 
 /**
+ * 将 API 错误转换为用户友好的中文提示
+ */
+const translateError = (status: number, message: string): string => {
+  // 根据状态码和消息内容翻译
+  if (status === 429 || message.includes('RESOURCE_EXHAUSTED')) {
+    return '当前使用人数较多，系统正在排队处理，请稍后重试';
+  }
+  if (status === 504 || message.includes('TIMEOUT') || message.includes('timeout')) {
+    return '生成超时，服务器响应较慢，请稍后重试';
+  }
+  if (status === 502 || message.includes('NETWORK_ERROR')) {
+    return '服务连接异常，请稍后重试';
+  }
+  if (status === 500 || message.includes('INTERNAL')) {
+    return '服务器繁忙，请稍后重试';
+  }
+  if (status === 400) {
+    return '请求参数有误，请检查输入';
+  }
+  // 默认返回原始消息
+  return message || '生成失败，请重试';
+};
+
+/**
  * 图像生成请求 (JSON URL 响应)
  * 返回静态图片 URL
  * 自动添加 Authorization header
@@ -100,7 +124,8 @@ const imageRequest = async (endpoint: string, body: object): Promise<string> => 
   if (!response.ok) {
     // 错误响应是 JSON
     const errorData = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
-    throw new Error(errorData.error?.message || `API request failed: ${response.status}`);
+    const rawMessage = errorData.error?.message || `API request failed: ${response.status}`;
+    throw new Error(translateError(response.status, rawMessage));
   }
 
   // 成功响应是 JSON { url: string }
@@ -109,49 +134,22 @@ const imageRequest = async (endpoint: string, body: object): Promise<string> => 
 };
 
 /**
- * 分析图像风格
- * 使用后端 /api/gemini 进行文本分析
- */
-export const analyzeImageStyle = async (base64Image: string): Promise<string> => {
-  const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
-
-  // 构建分析 prompt，包含图片
-  const prompt = `Analyze this interior design image. Describe the core 'Vibe' in English, focusing on: Color Palette, Material Textures (e.g., velvet, marble, oak), Lighting Mood (e.g., natural, moody, warm), and Architectural Lines. Keep it concise but descriptive. Output ONLY the description.
-
-[Image data attached as base64]
-${cleanBase64.substring(0, 100)}...`; // 仅示意，实际需要后端支持图像分析
-
-  try {
-    // 注意：当前后端 /api/gemini 只支持纯文本
-    // 如需图像分析，需要后端扩展 /api/gemini/analyze 端点
-    const result = await apiRequest<{ text: string }>('/api/gemini', { prompt });
-    return result.text || "Could not analyze image vibe.";
-  } catch (error) {
-    console.error("Gemini Analysis Error:", error);
-    throw new Error("Failed to analyze image style.");
-  }
-};
-
-interface GenConfig {
-  temperature?: number;
-  topP?: number;
-}
-
-/**
  * 生成图像变体
- * 使用后端 /api/gemini/image (二进制模式)
+ * 使用后端 /api/gemini/image
+ * 前端只发送标签和等级，prompt 在后端构建
  */
 export const generateImageVariation = async (
-  prompt: string,
-  base64Image: string,
-  config: GenConfig = { temperature: 0.5, topP: 0.95 }
+  tags: string[],
+  level: number,
+  base64Image: string
 ): Promise<string> => {
   const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
 
   try {
-    // 使用二进制模式，返回 blob URL
+    // 只发送标签和等级，不发送完整 prompt
     const blobUrl = await imageRequest('/api/gemini/image', {
-      prompt,
+      tags,
+      level,
       inputImage: cleanBase64,
       imageSize: '2K',
       aspectRatio: '1:1',
@@ -166,29 +164,15 @@ export const generateImageVariation = async (
 
 /**
  * 放大/修复图像
- * 使用后端 /api/gemini/image (二进制模式)
+ * 使用后端 /api/gemini/upscale (专用端点，prompt 在后端保密)
  */
 export const upscaleImage = async (base64Image: string): Promise<string> => {
   const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
 
-  const upscalePrompt = `Act as a Professional Architectural Photographer and Image Restoration Expert.
-Task: Upscale and Repair this image to 2K resolution.
-
-CRITICAL INSTRUCTIONS:
-1. CLARITY & RESOLUTION: Make the image crystal clear. Transform it into a High-Fidelity architectural photograph. Eliminate all blurriness, fuzziness, and low-res pixelation.
-2. REPAIR & FIX: Aggressively identify and correct unrealistic structural errors, distorted objects, impossible geometry, and warping lines. Remove all AI artifacts and digital noise. Ensure furniture and architectural elements are physically logical.
-3. MATERIAL & TEXTURE: Enhance wood grain, stone textures, fabric weaves, and metal reflections to be hyper-realistic and tactile.
-4. REALISM: Ensure lighting, shadows, and reflections interact physically correctly.
-5. PRESERVATION: Maintain 90% of the original composition and design intent, but replace low-quality details with high-definition assets.
-
-Output: Professional Architectural Photography, 2K Resolution, Noise-free, Sharp Focus.`;
-
   try {
-    // 使用二进制模式，返回 blob URL
-    const blobUrl = await imageRequest('/api/gemini/image', {
-      prompt: upscalePrompt,
+    // 只发送图片，prompt 在后端保密
+    const blobUrl = await imageRequest('/api/gemini/upscale', {
       inputImage: cleanBase64,
-      imageSize: '2K',
     });
 
     return blobUrl;
