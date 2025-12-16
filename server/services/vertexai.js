@@ -4,12 +4,31 @@
  * 支持多区域故障转移
  */
 import { GoogleAuth } from 'google-auth-library';
+import dns from 'node:dns';
+import { Agent } from 'undici';
 
 // ============================================================================
 // 配置
 // ============================================================================
 const PROJECT_ID = process.env.VERTEX_AI_PROJECT || 'vibe-design';
 const MODEL = process.env.VERTEX_AI_MODEL || 'gemini-3-pro-image-preview';
+
+// 重要：优先使用 IPv4，避免某些网络环境下 IPv6 到 googleapis/aiplatform 的不稳定
+// Node 18+ 支持 setDefaultResultOrder；若不支持则忽略
+try {
+    dns.setDefaultResultOrder('ipv4first');
+} catch (_) {
+    // ignore
+}
+
+// 共享 HTTP 连接池（减少频繁建连带来的抖动 / reset）
+const dispatcher = new Agent({
+    connect: {
+        timeout: 10_000, // TCP/TLS 建连超时
+    },
+    keepAliveTimeout: 60_000,
+    keepAliveMaxTimeout: 120_000,
+});
 
 // 区域配置
 // gemini-3-pro-image-preview 只在 global 可用
@@ -28,6 +47,9 @@ function getVertexBaseUrl(region) {
 function getEndpoint(region) {
     return `${getVertexBaseUrl(region)}/v1/projects/${PROJECT_ID}/locations/${region}/publishers/google/models/${MODEL}:generateContent`;
 }
+
+// 文本生成使用固定 endpoint（目前仅 global）
+const ENDPOINT = getEndpoint(REGIONS[0]);
 
 // 启动时打印配置
 console.log('[VertexAI] Project:', PROJECT_ID);
@@ -168,6 +190,7 @@ export async function generateContent(prompt, options = {}) {
 
     try {
         const response = await fetch(ENDPOINT, {
+            dispatcher,
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -227,7 +250,12 @@ export async function generateContent(prompt, options = {}) {
         }
 
         // 网络错误等
-        console.error('[VertexAI] Unexpected error:', err.message);
+        console.error('[VertexAI] Unexpected error:', {
+            message: err.message,
+            name: err.name,
+            code: err.code,
+            cause: err.cause?.message,
+        });
         const error = new Error('Failed to connect to Vertex AI');
         error.status = 502;
         error.code = 'NETWORK_ERROR';
@@ -239,7 +267,7 @@ export async function generateContent(prompt, options = {}) {
 // 图像生成 API
 // ============================================================================
 
-const IMAGE_TIMEOUT_MS = 120000; // 图像生成需要更长超时 (120s)
+const IMAGE_TIMEOUT_MS = 300000; // 图像生成超时 300s (与 Nginx 超时匹配)
 
 // 重试配置 (针对 429 RESOURCE_EXHAUSTED 错误)
 // 总等待时间约 2 分钟: 30s + 40s + 50s ≈ 120s
@@ -281,6 +309,7 @@ async function executeImageRequest(requestBody, token, region) {
 
     try {
         const response = await fetch(endpoint, {
+            dispatcher,
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -359,7 +388,7 @@ async function executeImageRequest(requestBody, token, region) {
         clearTimeout(timeoutId);
 
         if (err.name === 'AbortError') {
-            const error = new Error('Request timeout after 120 seconds');
+            const error = new Error('Request timeout after 300 seconds');
             error.status = 504;
             error.code = 'TIMEOUT';
             throw error;
@@ -369,7 +398,13 @@ async function executeImageRequest(requestBody, token, region) {
             throw err;
         }
 
-        console.error('[VertexAI] Unexpected error:', err.message);
+        console.error('[VertexAI] Unexpected error:', {
+            message: err.message,
+            name: err.name,
+            code: err.code,
+            cause: err.cause?.message,
+            region,
+        });
         const error = new Error('Failed to connect to Vertex AI');
         error.status = 502;
         error.code = 'NETWORK_ERROR';
