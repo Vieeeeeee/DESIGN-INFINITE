@@ -2,19 +2,20 @@
 
 <img src="public/favicon.svg" width="120" height="120" alt="Design Infinite Logo">
 
-# DESIGN INFINITE | 设计无限生成器
+# DESIGN INFINITE
 
 **AI-Driven Interior Design Reference Generator**
-AI 驱动的高端室内设计参考图生成引擎
 
 [![GitHub](https://img.shields.io/badge/GitHub-Vieeeeeee-181717?style=flat-square&logo=github)](https://github.com/Vieeeeeee/DESIGN-INFINITE)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+
+**English** | [简体中文](./README_zh-CN.md)
 
 </div>
 
 ---
 
-## ✨ Features | 功能特性
+## ✨ Features
 
 <div align="center">
 
@@ -30,7 +31,7 @@ AI 驱动的高端室内设计参考图生成引擎
 
 ---
 
-## 🛠️ Stack | 技术架构
+## 🛠️ Stack
 
 <div align="center">
 
@@ -48,7 +49,7 @@ AI 驱动的高端室内设计参考图生成引擎
 
 ---
 
-## 🚀 Quick Start | 快速开始
+## 🚀 Quick Start
 
 ### Prerequisites
 - Node.js v18+
@@ -82,7 +83,7 @@ open http://localhost:3000
 
 ---
 
-## 💎 Points System | 积分系统
+## 💎 Points System
 
 | Action | Points | Description |
 |:---|:---:|:---|
