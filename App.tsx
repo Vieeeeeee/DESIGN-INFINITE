@@ -1281,7 +1281,7 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
     >
 
       {/* Header - Responsive: Mobile Compact / Desktop Full */}
-      <header className={`bg-transparent flex items-center justify-between z-50 flex-shrink-0 sticky top-0 relative transition-colors duration-300
+      <header className={`bg-transparent flex items-center justify-between z-50 flex-shrink-0 sticky top-0 transition-colors duration-300
         ${isMobile ? 'h-11 px-3' : 'h-12 px-6'}`}>
 
         {/* Left: Logo/Title */}
@@ -1575,7 +1575,7 @@ export default function App({ userEmail, userPoints, onOpenUserCenter, onUpdateP
             </div>
           } className="flex-1 relative !p-0 min-h-0" isLight={isLightMode}
             action={
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-sm border text-[11px] font-medium tracking-wide hidden lg:flex cursor-default select-none font-['Noto_Serif_SC_Variable']
+              <div className={`items-center gap-2 px-3 py-1.5 rounded-sm border text-[11px] font-medium tracking-wide hidden lg:flex cursor-default select-none font-['Noto_Serif_SC_Variable']
                 ${isLightMode
                   ? 'bg-zinc-100/50 border-zinc-200/50 text-zinc-500'
                   : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-500'

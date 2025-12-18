@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Modern smooth rounded rectangle (using squircle-like high curvature) -->
+  <rect width="128" height="128" rx="32" ry="32" fill="#000000"/>
+  
+  <!-- Central balanced "AI Sparkle" / Astroid shape -->
+  <!-- Designed to be optically balanced and minimalist -->
+  <path d="M64 24 C 68 50, 78 60, 104 64 C 78 68, 68 78, 64 104 C 60 78, 50 68, 24 64 C 50 60, 60 50, 64 24 Z" fill="#ffffff"/>
+</svg>
