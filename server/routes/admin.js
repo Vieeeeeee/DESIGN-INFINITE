@@ -265,12 +265,15 @@ router.get('/users', authMiddleware, adminMiddleware, (req, res) => {
             // 计算裂变层级
             const level = calculateUserLevel(user.id);
 
+            // SQLite CURRENT_TIMESTAMP 存储的是 UTC 时间，需要添加 'Z' 后缀让前端正确识别并转换为本地时间
+            const createdAtUtc = user.created_at ? user.created_at.replace(' ', 'T') + 'Z' : null;
+
             return {
                 id: user.id,
                 email: user.email,
                 points: user.points || 0,
                 dailyPoints: user.daily_points || 0,
-                createdAt: user.created_at,
+                createdAt: createdAtUtc,
                 inviter: inviterEmail,
                 invitedCount: inviteCount?.count || 0,
                 // actionsCount: actionCount?.count || 0, // 废弃总数
@@ -339,6 +342,9 @@ router.get('/user/:id', authMiddleware, adminMiddleware, (req, res) => {
             LIMIT 50
         `).all(userId);
 
+        // 辅助函数：将 SQLite UTC 时间转换为 ISO 8601 格式
+        const toUtcIso = (datetime) => datetime ? datetime.replace(' ', 'T') + 'Z' : null;
+
         res.json({
             user: {
                 id: user.id,
@@ -346,15 +352,15 @@ router.get('/user/:id', authMiddleware, adminMiddleware, (req, res) => {
                 points: user.points || 0,
                 dailyPoints: user.daily_points || 0,
                 dailyPointsDate: user.daily_points_date,
-                createdAt: user.created_at,
+                createdAt: toUtcIso(user.created_at),
                 inviter: user.inviter_email || null,
             },
             inviteCodes: inviteCodes.map(c => ({
                 code: c.code,
                 isUsed: c.used_by !== null,
                 usedBy: c.used_by_email || null,
-                usedAt: c.used_at,
-                createdAt: c.created_at,
+                usedAt: toUtcIso(c.used_at),
+                createdAt: toUtcIso(c.created_at),
             })),
             pointsLog,
         });
